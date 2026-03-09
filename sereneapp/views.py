@@ -768,28 +768,28 @@ class UserViewBook(APIView):
         books = Book.objects.all()
         serializer = BookSerializer(books, many=True)
         return Response(serializer.data)
-
-
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-import google.generativeai as genai
+from google import genai
 import os
 from dotenv import load_dotenv
 from django.conf import settings
 
+# -----------------------------
 # Load environment variables
+# -----------------------------
 load_dotenv()
+
 api_key = os.getenv("GOOGLE_API_KEY")
 
 if not api_key:
     print("[ERROR] GOOGLE_API_KEY not found in .env file")
 
-# Configure Gemini API
-genai.configure(api_key=settings.GOOGLE_API_KEY)
-
-# Create Gemini model instance
-model = genai.GenerativeModel("gemini-2.5-flash")
+# -----------------------------
+# Configure Gemini Client
+# -----------------------------
+client = genai.Client(api_key=settings.GOOGLE_API_KEY)
 
 # -----------------------------
 # Keywords
@@ -804,13 +804,14 @@ DEPRESSION_KEYWORDS = [
     "self hate", "guilt", "shame",
     "therapy", "counselling", "psychologist", "psychiatrist",
     "antidepressant", "medicine", "treatment", "healing",
-    "Bipolar","Bipolar-Type 1", "Bipolar-Type 2", "Manic Depression","Cyclothymic Disorder"
-    "BipolarType1", "BipolarType2","Bipolar-Type-1", "Bipolar-Type-2"
+    "bipolar", "bipolar-type 1", "bipolar-type 2",
+    "manic depression", "cyclothymic disorder",
+    "bipolartype1", "bipolartype2", "bipolar-type-1", "bipolar-type-2"
 ]
 
 CRISIS_KEYWORDS = [
-    "kill myself", "end my life", "suicide", "self harm", "hurt myself",
-    "no reason to live", "die"
+    "kill myself", "end my life", "suicide", "self harm",
+    "hurt myself", "no reason to live", "die"
 ]
 
 GREETINGS = ["hi", "hello", "hey", "morning", "evening", "afternoon"]
@@ -820,6 +821,7 @@ GREETINGS = ["hi", "hello", "hey", "morning", "evening", "afternoon"]
 # -----------------------------
 
 class ChatbotAPIView(APIView):
+
     def post(self, request):
         user_message = request.data.get("message", "").strip()
 
@@ -837,24 +839,31 @@ class ChatbotAPIView(APIView):
             return Response({
                 "type": "crisis",
                 "reply": (
-                    "I'm really sorry that you're feeling this way 💔. "
+                    "I'm really sorry that you're feeling this way 💔.\n"
                     "You’re not alone, and help is available.\n\n"
                     "Please reach out to someone you trust or a mental health professional.\n\n"
-                    "📞 **India Suicide Prevention Helpline:** 9152987821\n"
-                    "📞 **AASRA:** 91-22-27546669\n\n"
+                    "📞 India Suicide Prevention Helpline: 9152987821\n"
+                    "📞 AASRA: 91-22-27546669\n\n"
                     "If you’re in immediate danger, please contact emergency services right now."
                 )
             })
 
         # ✅ Depression-related message
         if any(keyword in user_message_lower for keyword in DEPRESSION_KEYWORDS):
+
             try:
-                response = model.generate_content(
-                    f"You are a compassionate mental health support assistant focused on depression. "
-                    f"Respond empathetically and calmly. "
-                    f"Do NOT diagnose or prescribe medication. "
-                    f"Encourage healthy coping strategies and seeking professional help when needed.\n\n"
-                    f"User message: {user_message}"
+                prompt = f"""
+You are a compassionate mental health support assistant focused on depression.
+Respond empathetically and calmly.
+Do NOT diagnose or prescribe medication.
+Encourage healthy coping strategies and seeking professional help when needed.
+
+User message: {user_message}
+"""
+
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=prompt
                 )
 
                 return Response({
@@ -868,7 +877,7 @@ class ChatbotAPIView(APIView):
                     "reply": str(e)
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # 👋 Greeting (checked AFTER depression)
+        # 👋 Greeting
         if any(greet in user_words for greet in GREETINGS):
             return Response({
                 "type": "greeting",
